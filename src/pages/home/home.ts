@@ -1,30 +1,24 @@
 import { Component, ViewChild, ElementRef } from '@angular/core';
 import { NavController } from 'ionic-angular';
-import 'tracking/build/tracking';
-import 'tracking/build/data/face';
-import 'tracking/build/data/eye';
-import 'tracking/build/data/mouth';
-// import 'dat.gui/build/dat.gui';
 import { Platform } from 'ionic-angular/platform/platform';
+import '@tensorflow/tfjs'; // The tensorflow has to be imported before face-api.js
+import * as faceapi from 'face-api.js';
 
 declare let cordova: any;
-declare var tracking: any;
-declare var dat: any;
 @Component({
   selector: 'page-home',
   templateUrl: 'home.html'
 })
+
 export class HomePage {
-  public width = 320;    // width of photo which will be captured
-  public height = 0;     // height of photo which will be captured
 
   @ViewChild('overlay') canvasOverlay: ElementRef;
   @ViewChild('image') canvasImage: ElementRef;
 
   public canvasOverlayNe: any;
-  constructor(public navCtrl: NavController, public platform: Platform) {
+  public faceDetection = [];
 
-  }
+  constructor(public navCtrl: NavController, public platform: Platform) {}
 
   ngAfterViewInit() {
     let canvasOverlayNe = this.canvasOverlay.nativeElement;
@@ -34,9 +28,7 @@ export class HomePage {
   init(canvasOverlayNe) {
     this.platform.ready().then(() => {
       if (this.platform.is('cordova')) {
-        this.handleCameraPermission(() => {
-          this.initDetection(canvasOverlayNe);
-        });
+        this.handleCameraPermission(() => this.initDetection(canvasOverlayNe));
       }
       this.initDetection(canvasOverlayNe);
     });
@@ -44,66 +36,51 @@ export class HomePage {
 
   public initDetection(canvasOverlayNe) {
     var win: any = window;
-    if (win.navigator) {
-      navigator.getUserMedia({ video: true },
-        function (stream) {
-          var img = document.createElement("img");
-          let overlayContext = canvasOverlayNe.getContext('2d');
+    var MODEL_URL: string = 'https://www.techbuildz.com/models';
 
-          canvasOverlayNe.style.position = "absolute";
-          canvasOverlayNe.style.top = '16px';
-          canvasOverlayNe.style.zIndex = '100001';
-          canvasOverlayNe.style.display = 'block';
+    Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+    ]).then(() => {
+      if (win.navigator) {
+        navigator.getUserMedia({video: true},
+          (stream) => {
+            var video = document.querySelector('video');
+            let overlayContext = canvasOverlayNe.getContext('2d');
+            const videoDisplaySize = {width: video.width, height: video.height};
+            faceapi.matchDimensions(overlayContext, videoDisplaySize);
+            video.srcObject = stream
+            const img = new Image()
+            img.src = "../../assets/imgs/glass.png";
+            const hat_img = new Image()
+            hat_img.src = "../../assets/imgs/hat.png";
 
-          var video = document.querySelector('video');
-          video.srcObject = stream
-          
-          var tracker = new tracking.ObjectTracker('mouth');
-          tracker.setStepSize(1.7);
-          tracking.track('#video', tracker, { camera: true });
-          // tracker.setInitialScale(1);
-          // tracker.setStepSize(2.7);
-          // tracker.setEdgesDensity(.2);
-          img.src = '';
-          
-          
-          tracker.on('track', function(event) {
-            if (event.data.length === 0) {
-              // No colors were detected in this frame.
-              img.src = '';
-              console.log("NO FACE")
+            setInterval(async () => {
+              const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks()
+              const resizedDetections = faceapi.resizeResults(detections, videoDisplaySize);
               overlayContext.clearRect(0, 0, canvasOverlayNe.width, canvasOverlayNe.height);
-            } else {
-              event.data.forEach(function(rect) {
-                img.src = 'https://d2t25beedf4h7i.cloudfront.net/static/home/images/about_image_fktblq_c_scale,w_681.6a0af93aaa6b.webp';
-                overlayContext.clearRect(0, 0, canvasOverlayNe.width, canvasOverlayNe.height);
-                overlayContext.drawImage(img, rect.x, rect.y, rect.width, rect.height);
-                console.log(rect.x, rect.y, rect.height, rect.width);
-              });
-            }
-          });
-
-          // var gui = new dat.GUI();
-          // gui.add(tracker, 'edgesDensity', 0.1, 0.5).step(0.01);
-          // gui.add(tracker, 'initialScale', 1.0, 10.0).step(0.1);
-          // gui.add(tracker, 'stepSize', 1, 5).step(0.1);
-        
-        }, function (err) {
-          console.log("err: ", err);
-        }
-      );
-    } else {
-      console.log('phonertc is not defined');
-    }
+              this.faceDetection = resizedDetections
+              // faceapi.draw.drawFaceLandmarks(overlayContext, resizedDetections);
+              // const landmarks = await faceapi.detectLandmarks(video)
+              if (this.faceDetection.length > 0) {
+                const box = this.faceDetection[0].detection.box
+                overlayContext.drawImage(img, box.x * 1.1, box.y + 10, box.width - 15, box.height - 60);
+                overlayContext.drawImage(hat_img, box.x - 10, box.y - 80, box.width + 40, box.height);
+              }
+            }, 80);
+          }, (err) => console.error("err: ", err)
+        );
+      } else {
+        console.log('phonertc is not defined');
+      }
+    })
   }
 
   public handleCameraPermission(cb) {
     let permissions = cordova.plugins.permissions;
-    permissions.requestPermission(permissions.CAMERA, function (status) {
+    permissions.requestPermission(permissions.CAMERA, (status) => {
       cb(status);
-    }, (err) => {
-      console.log('error on request permissions: ', err);
-    });
+    }, (err) => console.log('error on request permissions: ', err));
   }
 
   takePhoto() {
@@ -111,13 +88,16 @@ export class HomePage {
     let videoGet = document.querySelector("video");
     canvas.width = videoGet.width;
     canvas.height = videoGet.height;
+    const img = new Image()
+    img.src = "../../assets/imgs/glass.png";
+    const hat_img = new Image()
+    hat_img.src = "../../assets/imgs/hat.png";
     canvas.getContext('2d').drawImage(videoGet, 0, 0, canvas.width, canvas.height);
-    let img = canvas.toDataURL();
-    console.log(img)
+    if (this.faceDetection.length > 0) {
+      const box = this.faceDetection[0].detection.box
+      canvas.getContext('2d').drawImage(img, box.x + 15, box.y + 10, box.width - 15, box.height - 60);
+      canvas.getContext('2d').drawImage(hat_img, box.x - 10, box.y - 80, box.width + 40, box.height);
+    }
+    canvas.toDataURL();
   }
-
-  takeFace() {
-    
-  }
-
 }
