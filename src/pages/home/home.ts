@@ -36,7 +36,7 @@ export class HomePage {
 
   public initDetection(canvasOverlayNe) {
     var win: any = window;
-    var MODEL_URL: string = 'https://www.techbuildz.com/models';
+    var MODEL_URL: string = '../../assets/models';
 
     Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
@@ -50,24 +50,24 @@ export class HomePage {
             const videoDisplaySize = {width: video.width, height: video.height};
             faceapi.matchDimensions(overlayContext, videoDisplaySize);
             video.srcObject = stream
-            const img = new Image()
-            img.src = "../../assets/imgs/glass.png";
-            const hat_img = new Image()
-            hat_img.src = "../../assets/imgs/hat.png";
+            const glass_image = new Image()
+            glass_image.src = "../../assets/imgs/glass.png";
+            const hat_image = new Image()
+            hat_image.src = "../../assets/imgs/hat.png";
 
             setInterval(async () => {
               const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks()
               const resizedDetections = faceapi.resizeResults(detections, videoDisplaySize);
               overlayContext.clearRect(0, 0, canvasOverlayNe.width, canvasOverlayNe.height);
               this.faceDetection = resizedDetections
-              // faceapi.draw.drawFaceLandmarks(overlayContext, resizedDetections);
-              // const landmarks = await faceapi.detectLandmarks(video)
               if (this.faceDetection.length > 0) {
                 const box = this.faceDetection[0].detection.box
-                overlayContext.drawImage(img, box.x * 1.1, box.y + 10, box.width - 15, box.height - 60);
-                overlayContext.drawImage(hat_img, box.x - 10, box.y - 80, box.width + 40, box.height);
+                let x_position = this.faceDetection[0].landmarks.positions[0].x
+                let y_position = this.faceDetection[0].landmarks.positions[0].y - 15
+                overlayContext.drawImage(glass_image, x_position, y_position, box.width - 15, box.height - 60);
+                overlayContext.drawImage(hat_image, x_position - 20, y_position - 100, box.width + 40, box.height);
               }
-            }, 80);
+            }, 100);
           }, (err) => console.error("err: ", err)
         );
       } else {
@@ -88,15 +88,17 @@ export class HomePage {
     let videoGet = document.querySelector("video");
     canvas.width = videoGet.width;
     canvas.height = videoGet.height;
-    const img = new Image()
-    img.src = "../../assets/imgs/glass.png";
+    const glass_image = new Image()
+    glass_image.src = "../../assets/imgs/glass.png";
     const hat_img = new Image()
     hat_img.src = "../../assets/imgs/hat.png";
     canvas.getContext('2d').drawImage(videoGet, 0, 0, canvas.width, canvas.height);
     if (this.faceDetection.length > 0) {
       const box = this.faceDetection[0].detection.box
-      canvas.getContext('2d').drawImage(img, box.x + 15, box.y + 10, box.width - 15, box.height - 60);
-      canvas.getContext('2d').drawImage(hat_img, box.x - 10, box.y - 80, box.width + 40, box.height);
+      let x_position = this.faceDetection[0].landmarks.positions[0].x
+      let y_position = this.faceDetection[0].landmarks.positions[0].y - 15
+      canvas.drawImage(glass_image, x_position, y_position, box.width - 15, box.height - 60);
+      canvas.drawImage(hat_img, x_position - 20, y_position - 100, box.width + 40, box.height);
     }
     canvas.toDataURL();
   }
